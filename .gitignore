@@ -1,0 +1,12 @@
+# OpenCode 配置和缓存
+.opencode/
+
+# Playwright 相关目录
+.playwright/
+.playwright-cli/
+
+# Python 虚拟环境
+myvenv/
+
+# OpenCode 配置文件
+opencode.json
