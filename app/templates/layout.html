@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Encoder System{% endblock %}</title>
+    <link href="{{ url_for('static', filename='bootstrap-5.3.0/css/bootstrap.min.css') }}" rel="stylesheet">
+    <style>
+        .navbar-light .nav-link:hover,
+        .navbar-light .nav-link:focus {
+            background-color: rgba(0, 0, 0, 0.08);
+            border-radius: 6px;
+        }
+        .navbar-light .nav-link:active {
+            background-color: rgba(0, 0, 0, 0.14);
+        }
+    </style>
+    {% block extra_head %}{% endblock %}
+</head>
+
+<body class="bg-light">
+
+    <nav class="navbar navbar-expand-lg navbar-light sticky-top" style="background-color: #bee0f5;">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="/">Encoder System</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarContent">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item"><a class="nav-link" href="/upload">📥 上传</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/color">💡 灯光</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/infrared">📡 红外学习</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/ir_send">📶 红外发射</a></li>
+                </ul>
+                <ul class="navbar-nav ms-auto">
+                    {% if user_name %}
+                    <li class="nav-item d-flex align-items-center"><span class="navbar-text me-3">{{ user_name }}</span></li>
+                    {% endif %}
+                    <li class="nav-item d-flex align-items-center"><span class="badge bg-secondary" id="wc">0</span></li>
+                    <li class="nav-item"><a class="nav-link" href="/logout">退出</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    {% block content %}{% endblock %}
+
+    <script src="{{ url_for('static', filename='lib/socket.io.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='bootstrap-5.3.0/js/bootstrap.bundle.min.js') }}"></script>
+    {% block extra_scripts %}{% endblock %}
+</body>
+
+</html>

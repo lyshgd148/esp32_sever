@@ -1,0 +1,89 @@
+{% extends "layout.html" %}
+{% block title %}红外发射{% endblock %}
+
+{% block extra_head %}
+<style>
+    .ir-btn { width: 80px; height: 80px; font-size: 1rem; border-radius: 12px; transition: all 0.15s; }
+    .ir-btn:active:not(:disabled) { transform: scale(0.92); }
+    .ir-btn.sending { animation: pulse 0.6s infinite alternate; }
+    @keyframes pulse { from { opacity: 1; } to { opacity: 0.5; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container px-3" style="max-width: 520px; margin-top: 6vh;">
+    <div class="card shadow">
+        <div class="card-header"><h5 class="mb-0">红外发射</h5></div>
+        <div class="card-body">
+            <div class="mb-3">
+                <label class="form-label">选择设备</label>
+                <select class="form-select" id="deviceSelect"><option value="">-- 请选择设备 --</option></select>
+            </div>
+            <hr>
+            <div class="d-flex flex-wrap justify-content-center gap-2" id="btnGrid">
+                <div class="text-muted text-center py-3 w-100">请先选择设备</div>
+            </div>
+            <div id="sendStatus" class="text-center mt-3 small"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const socket = io({ transports: ["polling", "websocket"] });
+    document.getElementById("wc").textContent = 0;
+    socket.on("web_count", (d) => { document.getElementById("wc").textContent = d.count; });
+
+    const deviceSelect = document.getElementById("deviceSelect");
+    const btnGrid = document.getElementById("btnGrid");
+    const sendStatus = document.getElementById("sendStatus");
+    let irData = {}, activeKey = null;
+
+    function escapeHtml(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+
+    function loadData() { fetch("/infrared/data").then(r => r.json()).then(data => { irData = data; renderDeviceSelect(); }); }
+
+    function renderDeviceSelect() {
+        const devices = Object.keys(irData);
+        deviceSelect.innerHTML = '<option value="">-- 请选择设备 --</option>' + devices.map(d => `<option value="${escapeHtml(d)}">${escapeHtml(d)}</option>`).join("");
+        if (devices.length > 0) { deviceSelect.value = devices[0]; renderButtons(); }
+    }
+
+    function renderButtons() {
+        const device = deviceSelect.value;
+        if (!device || !irData[device]) { btnGrid.innerHTML = '<div class="text-muted text-center py-3 w-100">请先选择设备</div>'; return; }
+        const keys = Object.keys(irData[device]);
+        if (keys.length === 0) { btnGrid.innerHTML = '<div class="text-muted text-center py-3 w-100">该设备暂无按键</div>'; return; }
+        const locked = activeKey !== null;
+        btnGrid.innerHTML = keys.map(k => {
+            const isActive = activeKey === device + ":" + k;
+            return `<button class="${isActive?'btn btn-warning ir-btn sending':'btn btn-outline-primary ir-btn'}" ${locked?'disabled':''} onclick="sendIR('${escapeHtml(device)}','${escapeHtml(k)}')">${escapeHtml(k)}</button>`;
+        }).join("");
+    }
+
+    function sendIR(device, key) {
+        if (activeKey) return;
+        activeKey = device + ":" + key; renderButtons();
+        sendStatus.innerHTML = `<span class="text-primary">发送中: ${escapeHtml(device)} / ${escapeHtml(key)} ...</span>`;
+        socket.emit("ir_send", { device, key });
+    }
+
+    deviceSelect.addEventListener("change", () => { activeKey = null; renderButtons(); sendStatus.innerHTML = ""; });
+
+    socket.on("ir_send_done", (d) => {
+        activeKey = null; renderButtons();
+        sendStatus.innerHTML = `<span class="text-success">发射成功: ${escapeHtml(d.device)} / ${escapeHtml(d.key)}</span>`;
+        setTimeout(() => { sendStatus.innerHTML = ""; }, 3000);
+    });
+
+    socket.on("ir_send_error", (d) => {
+        activeKey = null; renderButtons();
+        sendStatus.innerHTML = `<span class="text-danger">${escapeHtml(d.message)}</span>`;
+        setTimeout(() => { sendStatus.innerHTML = ""; }, 3000);
+    });
+
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) loadData(); });
+    loadData();
+</script>
+{% endblock %}

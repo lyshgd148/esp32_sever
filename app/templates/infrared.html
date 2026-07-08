@@ -1,0 +1,116 @@
+{% extends "layout.html" %}
+{% block title %}红外学习{% endblock %}
+
+{% block extra_head %}
+<style>
+    .device-card { margin-bottom: 1rem; }
+    .key-badge { margin: 2px; }
+    .learn-status { font-size: 0.85rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container px-3" style="max-width: 700px; margin-top: 6vh;">
+    <div class="card shadow">
+        <div class="card-header"><h5 class="mb-0">红外学习</h5></div>
+        <div class="card-body">
+            <div class="mb-3">
+                <label class="form-label">添加设备</label>
+                <div class="input-group">
+                    <input type="text" class="form-control" id="newDeviceInput" placeholder="设备名, 如: 电视">
+                    <button class="btn btn-primary" id="addDeviceBtn">添加</button>
+                </div>
+            </div>
+            <hr>
+            <div id="deviceList">
+                <div class="text-muted text-center py-3">暂无设备, 请先添加</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const socket = io({ transports: ["polling", "websocket"] });
+    document.getElementById("wc").textContent = 0;
+    socket.on("web_count", (d) => { document.getElementById("wc").textContent = d.count; });
+
+    const deviceList = document.getElementById("deviceList");
+    const newDeviceInput = document.getElementById("newDeviceInput");
+    const addDeviceBtn = document.getElementById("addDeviceBtn");
+    const devices = {};
+
+    function escapeHtml(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+
+    function render() {
+        const names = Object.keys(devices);
+        if (names.length === 0) { deviceList.innerHTML = '<div class="text-muted text-center py-3">暂无设备, 请先添加</div>'; return; }
+        deviceList.innerHTML = names.map(name => {
+            const dev = devices[name];
+            const keysHtml = dev.keys.length === 0 ? '<span class="text-muted small">暂无按键</span>'
+                : dev.keys.map(k => `<span class="badge bg-success key-badge d-inline-flex align-items-center">${escapeHtml(k)}<button class="btn-close btn-close-white ms-1" style="font-size:0.5rem;" onclick="deleteKey('${escapeHtml(name)}','${escapeHtml(k)}')"></button></span>`).join("");
+            const statusHtml = dev.learning ? '<span class="text-primary learn-status">学习中...</span>' : '';
+            return `<div class="card device-card"><div class="card-header d-flex justify-content-between align-items-center py-2"><strong>${escapeHtml(name)}</strong><button class="btn btn-outline-danger btn-sm" onclick="deleteDevice('${escapeHtml(name)}')">删除设备</button></div><div class="card-body py-2"><div class="input-group mb-2"><input type="text" class="form-control key-input" placeholder="按键名, 如: 电源" id="keyInput_${escapeHtml(name)}"><button class="btn btn-success learn-btn" id="learnBtn_${escapeHtml(name)}" ${dev.learning?'disabled':''} onclick="startLearn('${escapeHtml(name)}')">${dev.learning?'学习中...':'开始学习'}</button></div><div id="status_${escapeHtml(name)}">${statusHtml}</div><div class="mt-1">${keysHtml}</div></div></div>`;
+        }).join("");
+        if (names.length > 0) {
+            const firstInput = document.getElementById("keyInput_" + names[0]);
+            if (firstInput) firstInput.focus();
+        }
+    }
+
+    addDeviceBtn.addEventListener("click", () => {
+        const name = newDeviceInput.value.trim();
+        if (!name) return;
+        if (devices[name]) { alert("设备已存在"); return; }
+        devices[name] = { keys: [], learning: false };
+        newDeviceInput.value = "";
+        render();
+    });
+    newDeviceInput.addEventListener("keydown", (e) => { if (e.key === "Enter") addDeviceBtn.click(); });
+
+    function startLearn(deviceName) {
+        const input = document.getElementById("keyInput_" + deviceName);
+        if (!input) return;
+        const key = input.value.trim();
+        if (!key) { alert("请输入按键名"); return; }
+        if (devices[deviceName].keys.includes(key) && !confirm("按键 '" + key + "' 已存在, 是否覆盖?")) return;
+        devices[deviceName].learning = true; render();
+        socket.emit("ir_learn", { device: deviceName, key: key });
+    }
+
+    function deleteDevice(name) {
+        if (!confirm("确定删除设备 '" + name + "' 及其所有按键?")) return;
+        fetch("/infrared/delete", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({device:name}) })
+            .then(() => { delete devices[name]; render(); });
+    }
+
+    function deleteKey(device, key) {
+        if (!confirm("确定删除按键 '" + key + "'?")) return;
+        fetch("/infrared/delete", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({device, key}) })
+            .then(() => { const dev = devices[device]; if (dev) dev.keys = dev.keys.filter(k => k !== key); render(); });
+    }
+
+    socket.on("ir_done", (d) => {
+        const dev = devices[d.device];
+        if (dev) {
+            dev.learning = false;
+            if (!dev.keys.includes(d.key)) dev.keys.push(d.key);
+            const el = document.getElementById("status_" + d.device);
+            if (el) el.innerHTML = '<span class="text-success learn-status">✓ 学习成功 (' + d.data.length + ' 个脉冲)</span>';
+            render();
+        }
+    });
+
+    socket.on("ir_error", (d) => {
+        Object.values(devices).forEach(dev => dev.learning = false);
+        document.querySelectorAll("[id^='status_']").forEach(el => el.innerHTML = '<span class="text-danger learn-status">' + escapeHtml(d.message) + '</span>');
+        render();
+    });
+
+    fetch("/infrared/data").then(r => r.json()).then(data => {
+        Object.entries(data).forEach(([device, keys]) => { devices[device] = { keys: Object.keys(keys), learning: false }; });
+        render();
+    });
+</script>
+{% endblock %}

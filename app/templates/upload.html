@@ -1,0 +1,169 @@
+{% extends "layout.html" %}
+{% block title %}固件上传{% endblock %}
+
+{% block content %}
+<div class="container px-3" style="max-width: 600px; margin-top: 6vh;">
+    <div class="card shadow">
+        <div class="card-header"><h5 class="mb-0">固件上传</h5></div>
+        <div class="card-body">
+            <form id="uploadForm" enctype="multipart/form-data">
+                <div class="mb-3">
+                    <label for="fileInput" class="form-label">选择 BIN 文件（≤ 1MB）</label>
+                    <input class="form-control" type="file" id="fileInput" accept=".bin">
+                    <div class="form-text">仅支持 .bin 文件，大小不超过 1MB。</div>
+                </div>
+                <div class="mb-3 d-none" id="sizeWarn">
+                    <div class="alert alert-warning py-2 mb-0">文件大小超过 1MB，请重新选择。</div>
+                </div>
+                <div class="mb-3 d-none" id="typeWarn">
+                    <div class="alert alert-warning py-2 mb-0">仅支持 .bin 文件。</div>
+                </div>
+                <div class="mb-3 d-none" id="resultMsg"></div>
+                <div class="d-flex justify-content-center gap-2 mb-3">
+                    <button type="submit" class="btn btn-primary" id="submitBtn">上传服务器</button>
+                    <button type="button" class="btn btn-success" id="esp32Btn">上传ESP32</button>
+                    <button type="button" class="btn btn-danger" id="flashBtn">下载</button>
+                </div>
+            </form>
+            <div class="d-none" id="otaArea">
+                <hr>
+                <div class="mb-2 d-flex justify-content-between">
+                    <small class="text-muted" id="otaStatus">空闲</small>
+                    <small class="text-muted" id="otaPercent">0%</small>
+                </div>
+                <div class="progress" style="height: 20px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" id="otaBar" role="progressbar" style="width: 0%">0%</div>
+                </div>
+                <div class="mt-2 d-none" id="otaResult"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const socket = io({ transports: ["polling", "websocket"] });
+    document.getElementById("wc").textContent = 0;
+    socket.on("web_count", (d) => { document.getElementById("wc").textContent = d.count; });
+
+    const fileInput = document.getElementById("fileInput");
+    const sizeWarn = document.getElementById("sizeWarn");
+    const typeWarn = document.getElementById("typeWarn");
+    const resultMsg = document.getElementById("resultMsg");
+    const submitBtn = document.getElementById("submitBtn");
+    const esp32Btn = document.getElementById("esp32Btn");
+    const flashBtn = document.getElementById("flashBtn");
+    const form = document.getElementById("uploadForm");
+    const otaArea = document.getElementById("otaArea");
+    const otaBar = document.getElementById("otaBar");
+    const otaPercent = document.getElementById("otaPercent");
+    const otaStatus = document.getElementById("otaStatus");
+    const otaResult = document.getElementById("otaResult");
+    const MAX_SIZE = 1048576;
+
+    function setAllBtns(disabled) { submitBtn.disabled = esp32Btn.disabled = flashBtn.disabled = disabled; }
+    function resetAllBtns() { setAllBtns(false); submitBtn.textContent = "上传服务器"; esp32Btn.textContent = "上传ESP32"; flashBtn.textContent = "下载"; }
+
+    socket.on("disconnect", () => {
+        resetAllBtns();
+        otaArea.classList.remove("d-none");
+        otaResult.classList.remove("d-none");
+        otaResult.innerHTML = '<div class="alert alert-warning py-2 mb-0">与服务器断开连接，请检查 ESP32。</div>';
+    });
+
+    fileInput.addEventListener("change", () => {
+        sizeWarn.classList.add("d-none"); typeWarn.classList.add("d-none"); resultMsg.classList.add("d-none");
+        const file = fileInput.files[0];
+        if (!file) return;
+        if (!file.name.toLowerCase().endsWith(".bin")) { typeWarn.classList.remove("d-none"); fileInput.value = ""; return; }
+        if (file.size > MAX_SIZE) { sizeWarn.classList.remove("d-none"); fileInput.value = ""; }
+    });
+
+    form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const file = fileInput.files[0];
+        if (!file || !file.name.toLowerCase().endsWith(".bin")) { typeWarn.classList.remove("d-none"); return; }
+        if (file.size > MAX_SIZE) { sizeWarn.classList.remove("d-none"); return; }
+        submitBtn.disabled = true; submitBtn.textContent = "上传中...";
+        const fd = new FormData(); fd.append("file", file);
+        try {
+            const resp = await fetch("/upload", { method: "POST", body: fd });
+            const data = await resp.json();
+            resultMsg.classList.remove("d-none");
+            resultMsg.innerHTML = '<div class="alert ' + (resp.ok ? "alert-success" : "alert-danger") + ' py-2 mb-0">' + data.message + "</div>";
+        } catch {
+            resultMsg.classList.remove("d-none");
+            resultMsg.innerHTML = '<div class="alert alert-danger py-2 mb-0">上传失败，请重试。</div>';
+        } finally { submitBtn.disabled = false; submitBtn.textContent = "上传服务器"; }
+    });
+
+    esp32Btn.addEventListener("click", async () => {
+        setAllBtns(true); esp32Btn.textContent = "启动中...";
+        try {
+            const resp = await fetch("/upload/ota", { method: "POST" });
+            const data = await resp.json();
+            if (resp.ok) {
+                otaArea.classList.remove("d-none"); otaResult.classList.add("d-none");
+                otaBar.style.width = "0%"; otaBar.textContent = "0%"; otaPercent.textContent = "0%"; otaStatus.textContent = "启动中...";
+            } else {
+                otaArea.classList.remove("d-none"); otaResult.classList.remove("d-none");
+                otaResult.innerHTML = '<div class="alert alert-danger py-2 mb-0">' + data.message + "</div>";
+                resetAllBtns();
+            }
+        } catch {
+            otaArea.classList.remove("d-none"); otaResult.classList.remove("d-none");
+            otaResult.innerHTML = '<div class="alert alert-danger py-2 mb-0">OTA 启动失败，请重试。</div>';
+            resetAllBtns();
+        }
+    });
+
+    socket.on("ota_progress", (d) => {
+        otaArea.classList.remove("d-none");
+        const pct = d.percent, msg = d.message;
+        otaBar.style.width = pct + "%"; otaBar.textContent = pct + "%"; otaPercent.textContent = pct + "%"; otaStatus.textContent = msg;
+        if (pct >= 0) {
+            otaBar.classList.remove("bg-danger", "bg-success"); otaBar.classList.add("bg-primary"); otaResult.classList.add("d-none");
+        } else {
+            otaBar.classList.remove("bg-primary", "bg-success"); otaBar.classList.add("bg-danger"); otaResult.classList.remove("d-none");
+            otaResult.innerHTML = '<div class="alert alert-danger py-2 mb-0">' + msg + "</div>";
+            resetAllBtns();
+        }
+        if (pct === 100) { otaBar.classList.remove("progress-bar-animated", "bg-primary", "bg-danger"); otaBar.classList.add("bg-success"); otaResult.classList.remove("d-none"); otaResult.innerHTML = '<div class="alert alert-success py-2 mb-0">' + msg + "</div>"; resetAllBtns(); }
+    });
+
+    flashBtn.addEventListener("click", async () => {
+        setAllBtns(true); flashBtn.textContent = "启动中...";
+        try {
+            const resp = await fetch("/upload/flash", { method: "POST" });
+            const data = await resp.json();
+            if (resp.ok) {
+                otaArea.classList.remove("d-none"); otaResult.classList.add("d-none");
+                otaBar.style.width = "0%"; otaBar.textContent = "0%"; otaPercent.textContent = "0%"; otaStatus.textContent = "等待 ESP32 响应 ...";
+            } else {
+                otaArea.classList.remove("d-none"); otaResult.classList.remove("d-none");
+                otaResult.innerHTML = '<div class="alert alert-danger py-2 mb-0">' + data.message + "</div>";
+                resetAllBtns();
+            }
+        } catch {
+            otaArea.classList.remove("d-none"); otaResult.classList.remove("d-none");
+            otaResult.innerHTML = '<div class="alert alert-danger py-2 mb-0">烧录启动失败，请重试。</div>';
+            resetAllBtns();
+        }
+    });
+
+    socket.on("flash_progress", (d) => {
+        otaArea.classList.remove("d-none");
+        const pct = d.percent, msg = d.message;
+        otaBar.style.width = pct + "%"; otaBar.textContent = pct + "%"; otaPercent.textContent = pct + "%"; otaStatus.textContent = msg;
+        if (pct >= 0) {
+            otaBar.classList.remove("bg-danger", "bg-success"); otaBar.classList.add("bg-warning"); otaResult.classList.add("d-none");
+        } else {
+            otaBar.classList.remove("bg-warning", "bg-success"); otaBar.classList.add("bg-danger"); otaResult.classList.remove("d-none");
+            otaResult.innerHTML = '<div class="alert alert-danger py-2 mb-0">' + msg + "</div>";
+            resetAllBtns();
+        }
+        if (pct === 100) { otaBar.classList.remove("progress-bar-animated", "bg-warning", "bg-danger"); otaBar.classList.add("bg-success"); otaResult.classList.remove("d-none"); otaResult.innerHTML = '<div class="alert alert-success py-2 mb-0">' + msg + "</div>"; resetAllBtns(); }
+    });
+</script>
+{% endblock %}

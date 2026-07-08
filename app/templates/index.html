@@ -1,0 +1,63 @@
+{% extends "layout.html" %}
+{% block title %}Home System{% endblock %}
+
+{% block extra_head %}
+<style>
+    .value-badge { font-size: 1.5rem; min-width: 120px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container px-3" style="max-width: 600px; margin-top: 6vh;">
+    <div class="card shadow">
+        <div class="card-header"><h4 class="mb-0 text-center">Motor Control</h4></div>
+        <div class="card-body">
+            <div class="row g-3 mb-3">
+                <div class="col-12 col-sm-6">
+                    <div class="p-3 bg-white border rounded text-center">
+                        <div class="text-muted small">Angle</div>
+                        <span class="badge bg-primary value-badge mt-1" id="a">--</span>
+                    </div>
+                </div>
+                <div class="col-12 col-sm-6">
+                    <div class="p-3 bg-white border rounded text-center">
+                        <div class="text-muted small">Speed</div>
+                        <span class="badge bg-info value-badge mt-1" id="s">--</span>
+                    </div>
+                </div>
+            </div>
+            <div id="motorAlert" class="alert alert-secondary text-center fw-bold mb-3" role="alert">
+                Motor: <span id="m">--</span>
+            </div>
+            <div class="d-grid gap-2 d-sm-flex justify-content-center">
+                <button class="btn btn-success btn-lg" onclick="motor('START')">START</button>
+                <button class="btn btn-danger btn-lg" onclick="motor('STOP')">STOP</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const socket = io({ transports: ["polling", "websocket"], query: "page=index" });
+    document.getElementById("wc").textContent = 0;
+    socket.on("web_count", (d) => { document.getElementById("wc").textContent = d.count; });
+    setInterval(() => { socket.emit("heartbeat"); }, 1000);
+
+    socket.on("data", (d) => {
+        document.getElementById("a").textContent = Number(d.angle).toFixed(2);
+        document.getElementById("s").textContent = Number(d.speed).toFixed(2);
+    });
+
+    socket.on("state", (d) => {
+        const m = document.getElementById("m");
+        const alert = document.getElementById("motorAlert");
+        m.textContent = d.motor;
+        alert.className = "alert " + (d.motor === "START" ? "alert-success" : "alert-secondary")
+            + " text-center fw-bold mb-3";
+    });
+
+    function motor(cmd) { socket.emit("motor", { cmd: cmd }); }
+</script>
+{% endblock %}
