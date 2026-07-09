@@ -4,7 +4,8 @@ import time
 import machine
 import gc
 import _thread
-from .config import WIFI_SSID, WIFI_PASSWORD, PC_IP, PC_PORT
+from .config import WIFI_SSID, WIFI_PASSWORD, PC_IP, PC_PORT, MAGIC
+from .crc import crc16
 
 
 class NetworkManager:
@@ -99,9 +100,6 @@ class NetworkManager:
         return False
 
     def send_binary(self, cmd, seq, payload):
-        from .crc import crc16
-        from .config import MAGIC
-
         plen = len(payload)
         head = bytes([cmd, (seq >> 8) & 0xFF, seq & 0xFF,
                       (plen >> 8) & 0xFF, plen & 0xFF])
