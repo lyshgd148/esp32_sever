@@ -24,109 +24,110 @@ def receiver_thread():
 
     while True:
         try:
-            need_recv = True
-            if ota.state > 0 and len(recv_buf) >= 9:
-                need_recv = False
-            elif audio_active and len(recv_buf) >= 7:
-                need_recv = False
-            elif not ota.state > 0 and not audio_active:
-                if b"\n" in recv_buf:
-                    need_recv = False
-                elif prev_binary and len(recv_buf) > 0:
-                    need_recv = False
+            data = net.sock.recv(1024)
+            if not data:
+                print("TCP lost -> will reconnect")
+                net.need_reconnect = True
+                return
+            recv_buf += data
 
-            if need_recv:
-                data = net.sock.recv(1024)
-                if not data:
-                    print("TCP lost -> will reconnect")
-                    net.need_reconnect = True
-                    return
-                recv_buf += data
-
-            if ota.state > 0:
-                while len(recv_buf) >= 9:
-                    result = parse_binary_frame(recv_buf)
-                    if result == -2:
-                        break
-                    if result == -1:
-                        recv_buf = recv_buf[1:]
-                        continue
-                    cmd, seq, payload, consumed = result
-                    ota.handle_frame(cmd, seq, payload)
-                    recv_buf = recv_buf[consumed:]
-
-            elif audio_active:
-                while len(recv_buf) >= 7:
-                    result = parse_audio_frame(recv_buf)
-                    if result == -2:
-                        break
-                    if result == -1:
-                        recv_buf = recv_buf[1:]
-                        continue
-                    cmd, seq, payload, consumed = result
-                    if cmd == 0x30:
-                        audio.write(payload)
+            while True:
+                if ota.state > 0:
+                    while len(recv_buf) >= 9:
+                        result = parse_binary_frame(recv_buf)
+                        if result == -2:
+                            break
+                        if result == -1:
+                            recv_buf = recv_buf[1:]
+                            continue
+                        cmd, seq, payload, consumed = result
+                        ota.handle_frame(cmd, seq, payload)
                         recv_buf = recv_buf[consumed:]
-                    elif cmd == 0x31:
-                        audio.stop()
-                        audio_active = False
-                        prev_binary = False
-                        recv_buf = recv_buf[consumed:]
+                        if ota.state == 0:
+                            break
+                    if ota.state > 0:
                         break
 
-            else:
-                if prev_binary:
-                    recv_buf = b""
-                while b"\n" in recv_buf:
-                    idx = recv_buf.find(b"\n")
-                    line = recv_buf[:idx].decode().strip()
-                    recv_buf = recv_buf[idx + 1 :]
-                    if not line:
+                elif audio_active:
+                    while len(recv_buf) >= 7:
+                        result = parse_audio_frame(recv_buf)
+                        if result == -2:
+                            break
+                        if result == -1:
+                            recv_buf = recv_buf[1:]
+                            continue
+                        cmd, seq, payload, consumed = result
+                        if cmd == 0x30:
+                            audio.write(payload)
+                            recv_buf = recv_buf[consumed:]
+                        elif cmd == 0x31:
+                            audio.stop()
+                            audio_active = False
+                            prev_binary = False
+                            recv_buf = recv_buf[consumed:]
+                            break
+                    if audio_active:
+                        break
+
+                else:
+                    if prev_binary:
+                        recv_buf = b""
+                    while b"\n" in recv_buf:
+                        idx = recv_buf.find(b"\n")
+                        line = recv_buf[:idx].decode().strip()
+                        recv_buf = recv_buf[idx + 1 :]
+                        if not line:
+                            continue
+
+                        if line == "PONG":
+                            net.last_pong = time.ticks_ms()
+
+                        elif line == "OTA_START":
+                            ota.start_ready()
+
+                        elif line == "FLASH_BIN":
+                            ota.do_flash()
+
+                        elif line == "AUDIO_START":
+                            audio.start()
+                            audio_active = True
+
+                        elif line == "LEARN_IR":
+                            do_ir_learn(net)
+
+                        elif line.startswith("SEND_IR="):
+                            data_str = line.split("=", 1)[1]
+                            do_ir_send(net, data_str)
+
+                        elif line == "GET_STATE":
+                            hw.send_state(net)
+
+                        elif line == "START_DATA":
+                            net.send_enable = True
+
+                        elif line == "STOP_DATA":
+                            net.send_enable = False
+
+                        elif line == "MOTOR_START":
+                            hw.motor_start()
+                            net.safe_send("MOTOR=START\n")
+
+                        elif line == "MOTOR_STOP":
+                            hw.motor_stop()
+                            net.safe_send("MOTOR=STOP\n")
+
+                        elif line.startswith("COLOR="):
+                            _, rgb = line.split("=")
+                            r, g, b = rgb.split(",")
+                            hw.set_color(r, g, b)
+
+                        if audio_active or ota.state > 0:
+                            break
+
+                    prev_binary = ota.state > 0 or audio_active
+                    if audio_active or ota.state > 0:
                         continue
-
-                    if line == "PONG":
-                        net.last_pong = time.ticks_ms()
-
-                    elif line == "OTA_START":
-                        ota.start_ready()
-
-                    elif line == "FLASH_BIN":
-                        ota.do_flash()
-
-                    elif line == "AUDIO_START":
-                        audio.start()
-                        audio_active = True
-
-                    elif line == "LEARN_IR":
-                        do_ir_learn(net)
-
-                    elif line.startswith("SEND_IR="):
-                        data_str = line.split("=", 1)[1]
-                        do_ir_send(net, data_str)
-
-                    elif line == "GET_STATE":
-                        hw.send_state(net)
-
-                    elif line == "START_DATA":
-                        net.send_enable = True
-
-                    elif line == "STOP_DATA":
-                        net.send_enable = False
-
-                    elif line == "MOTOR_START":
-                        hw.motor_start()
-                        net.safe_send("MOTOR=START\n")
-
-                    elif line == "MOTOR_STOP":
-                        hw.motor_stop()
-                        net.safe_send("MOTOR=STOP\n")
-
-                    elif line.startswith("COLOR="):
-                        _, rgb = line.split("=")
-                        r, g, b = rgb.split(",")
-                        hw.set_color(r, g, b)
-
-                prev_binary = ota.state > 0 or audio_active
+                    break
 
         except OSError:
             pass
@@ -137,6 +138,7 @@ def receiver_thread():
 
 
 def main():
+    global audio_active
     hw.init_led()
     net.wifi_connect()
     net.tcp_connect()
@@ -152,6 +154,8 @@ def main():
 
             if net.need_reconnect:
                 print("Reconnecting...")
+                audio.stop()
+                audio_active = False
                 ota.reset()
                 net.tcp_connect()
                 time.sleep(0.5)
@@ -188,6 +192,8 @@ def main():
 
         except Exception as e:
             print("main error:", e)
+            audio.stop()
+            audio_active = False
             net.wifi_connect()
             net.tcp_connect()
             time.sleep(0.5)
