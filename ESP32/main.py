@@ -24,13 +24,24 @@ def receiver_thread():
 
     while True:
         try:
-            data = net.sock.recv(1024)
-            if not data:
-                print("TCP lost -> will reconnect")
-                net.need_reconnect = True
-                return
+            need_recv = True
+            if ota.state > 0 and len(recv_buf) >= 9:
+                need_recv = False
+            elif audio_active and len(recv_buf) >= 7:
+                need_recv = False
+            elif not ota.state > 0 and not audio_active:
+                if b"\n" in recv_buf:
+                    need_recv = False
+                elif prev_binary and len(recv_buf) > 0:
+                    need_recv = False
 
-            recv_buf += data
+            if need_recv:
+                data = net.sock.recv(1024)
+                if not data:
+                    print("TCP lost -> will reconnect")
+                    net.need_reconnect = True
+                    return
+                recv_buf += data
 
             if ota.state > 0:
                 while len(recv_buf) >= 9:
@@ -59,6 +70,7 @@ def receiver_thread():
                     elif cmd == 0x31:
                         audio.stop()
                         audio_active = False
+                        prev_binary = False
                         recv_buf = recv_buf[consumed:]
                         break
 
