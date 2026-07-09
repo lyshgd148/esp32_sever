@@ -46,6 +46,7 @@ ESP32/
     ├── ota.py               # OTA 状态机 + STM32 烧录
     ├── hardware.py          # WS2812 灯带 / 电机 / 编码器模拟
     ├── ir_handler.py        # 红外学习 / 发射包装
+    ├── audio.py             # I2S 音频播放器 (MAX98357, init-once)
     ├── infrared.py          # 红外底层驱动 (IRLearner)
     ├── STM32DOWN.py         # STM32 ISP 烧录协议
     └── crc.py               # CRC16 / CRC32 查表
@@ -80,6 +81,7 @@ Receiver 线程:                    Main 线程:
 | S→E | `SEND_IR=x,x,x,...` | 红外发射 |
 | S→E | `OTA_START` / `OTA_READY` / `OTA_ERROR` | OTA 准备 |
 | S→E | `FLASH_BIN` | STM32 烧录 |
+| S→E | `AUDIO_START` | 语音开始（进入音频模式） |
 
 ### TCP 二进制帧 (OTA 模式)
 
@@ -92,7 +94,17 @@ CMD:
   0x21 OTA_DONE  (E→S)    0x22 OTA_ERROR (E→S)
 ```
 
-同一 TCP 连接复用文本和二进制两种模式，通过 `ota_state` 标志切换，不要在 TCP 上新增第三种通信模式。
+同一 TCP 连接复用文本和二进制两种模式，通过 `ota_state` 和 `audio_active` 标志切换。音频帧复用二进制帧格式（无 CRC），不在 TCP 上新增第三种模式。
+
+### TCP 二进制帧 (音频模式)
+
+```
+[MAGIC 2B: 0xAA 0x55] [CMD 1B] [SEQ 2B BE] [LEN 2B BE] [PAYLOAD LEN]
+(无 CRC)
+
+CMD:
+  0x30 AUDIO_DATA (S→E)    0x31 AUDIO_STOP (S→E)
+```
 
 ## 快速开始
 
@@ -114,8 +126,9 @@ pip install -r requirements.txt
 ### 运行
 
 ```powershell
-python run.py                  # 默认 0.0.0.0:5000
-python run.py --port 8080      # 自定义 HTTP 端口
+python run.py                      # 默认 0.0.0.0:5000
+python run.py --port 8080          # 自定义 HTTP 端口
+python run.py --port 5000 --ssl    # 启用 HTTPS (需 cert.pem/key.pem)
 ```
 
 ### ESP32 部署
@@ -148,6 +161,19 @@ ESP32/
 
 存在嵌套加锁可能时必须使用 `threading.RLock()`，避免同一线程死锁。
 
+## ESP32 引脚映射
+
+| 外设 | 引脚 | 说明 |
+|------|------|------|
+| I2S SCK | GPIO 4 | MAX98357 BCLK |
+| I2S WS | GPIO 5 | MAX98357 LRCLK |
+| I2S SD | GPIO 6 | MAX98357 DATA |
+| STM32 UART TX | GPIO 17 | 烧录通信 |
+| STM32 UART RX | GPIO 18 | 烧录通信 |
+| STM32 Boot0 | GPIO 3 | 启动模式控制 |
+| STM32 NRST | GPIO 15 | 复位控制（已从 GPIO4 移出，避免与 I2S SCK 冲突） |
+| WS2812 LED | GPIO 48 | 内置 RGB 灯珠 |
+
 ## 协议独占
 
 OTA、Flash 烧录、红外学习、红外发射、语音 **五者互斥**，通过 `try_start_*()` / `end_*()` 原子检查，同时只能进行一项。
@@ -168,6 +194,7 @@ esp32_sever/
 ├── requirements.txt        # Python 依赖
 ├── AGENTS.md               # AI Agent 上下文
 ├── opencode.json           # opencode 配置
+├── cert.pem / key.pem      # SSL 自签证书 (gitignored)
 ├── app/
 │   ├── __init__.py         # Flask 工厂 + 心跳看门狗
 │   ├── extensions.py       # SocketIO 扩展
