@@ -1,5 +1,5 @@
-# OpenCode 配置和缓存
-.opencode/
+# # OpenCode 配置和缓存
+# .opencode/
 
 # Playwright 相关目录
 .playwright/
