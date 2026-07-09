@@ -231,11 +231,13 @@ class OtaSender:
         # ---- 0. 前置检查 ----
         if not os.path.exists(self.filepath):
             self._emit(socketio, -1, "文件不存在: " + self.filepath)
+            self._cleanup()
             return False
 
         self.filesize = os.path.getsize(self.filepath)
         if self.filesize == 0:
             self._emit(socketio, -1, "文件为空")
+            self._cleanup()
             return False
 
         # ---- 1. 计算文件 CRC32 ----
@@ -251,6 +253,7 @@ class OtaSender:
         while not st.ota_active or st.ota_queue is None:
             if time.time() - wait_start > ACK_TIMEOUT:
                 self._emit(socketio, -1, "ESP32 未响应 OTA_START (超时)")
+                self._cleanup()
                 return False
             time.sleep(0.1)
 

@@ -55,10 +55,12 @@ def receiver_thread():
                     cmd, seq, payload, consumed = result
                     if cmd == 0x30:
                         audio.write(payload)
+                        recv_buf = recv_buf[consumed:]
                     elif cmd == 0x31:
                         audio.stop()
                         audio_active = False
-                    recv_buf = recv_buf[consumed:]
+                        recv_buf = recv_buf[consumed:]
+                        break
 
             else:
                 if prev_binary:

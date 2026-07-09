@@ -11,7 +11,7 @@ class STM32Loader:
         )
 
         self.boot0 = Pin(3, Pin.OUT)
-        self.nrst = Pin(4, Pin.OUT)
+        self.nrst = Pin(15, Pin.OUT)
 
     # =========================
     # 基础IO

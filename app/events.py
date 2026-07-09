@@ -28,6 +28,8 @@ def on_disconnect():
     from flask import request
     if request.sid == st.audio_sid:
         st.end_audio()
+    if st.ota_active:
+        st.end_ota()
     if request.sid in _index_sids:
         del _index_sids[request.sid]
         st.web_count -= 1

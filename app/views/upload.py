@@ -68,6 +68,7 @@ def start_ota():
             socketio.emit(
                 "ota_progress", {"percent": -1, "message": "OTA 异常: " + str(e)}
             )
+        finally:
             st.end_ota()
 
     threading.Thread(target=_run_ota, daemon=True).start()
