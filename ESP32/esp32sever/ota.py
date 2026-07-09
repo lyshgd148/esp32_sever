@@ -131,7 +131,7 @@ class OTAHandler:
     def do_flash(self):
         self.flash_active = True
         try:
-            from STM32DOWN import STM32Loader
+            from esp32sever.STM32DOWN import STM32Loader
 
             def _cb(step, *args):
                 if step == "start":
