@@ -138,6 +138,7 @@ def receiver_thread():
 
 
 def main():
+    global audio_active
     hw.init_led()
     net.wifi_connect()
     net.tcp_connect()
@@ -153,6 +154,8 @@ def main():
 
             if net.need_reconnect:
                 print("Reconnecting...")
+                audio.stop()
+                audio_active = False
                 ota.reset()
                 net.tcp_connect()
                 time.sleep(0.5)
@@ -189,6 +192,8 @@ def main():
 
         except Exception as e:
             print("main error:", e)
+            audio.stop()
+            audio_active = False
             net.wifi_connect()
             net.tcp_connect()
             time.sleep(0.5)
