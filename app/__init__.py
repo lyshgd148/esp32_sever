@@ -61,6 +61,7 @@ def create_app():
     from .views.infrared import infrared_bp
     from .views.remote import remote_bp
     from .views.account import account_bp
+    from .views.audio import audio_bp
 
     app.register_blueprint(main_bp)
     app.register_blueprint(color_bp)
@@ -68,6 +69,7 @@ def create_app():
     app.register_blueprint(infrared_bp)
     app.register_blueprint(remote_bp)
     app.register_blueprint(account_bp)
+    app.register_blueprint(audio_bp)
 
     from . import events  # noqa: F811
     from . import ota      # noqa: F811

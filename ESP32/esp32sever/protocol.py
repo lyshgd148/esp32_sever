@@ -28,3 +28,22 @@ def parse_binary_frame(buf):
         return -1
     payload = buf[7:7 + plen]
     return cmd, seq, payload, frame_len
+
+
+def parse_audio_frame(buf):
+    if len(buf) < 7:
+        return -2
+    if buf[0] != 0xAA or buf[1] != 0x55:
+        return -1
+    cmd = buf[2]
+    plen = (buf[5] << 8) | buf[6]
+    frame_len = 7 + plen
+    if len(buf) < frame_len:
+        return -2
+    if cmd not in (0x30, 0x31):
+        return -1
+    if plen > 4096:
+        return -1
+    payload = buf[7:7 + plen]
+    seq = (buf[3] << 8) | buf[4]
+    return cmd, seq, payload, frame_len

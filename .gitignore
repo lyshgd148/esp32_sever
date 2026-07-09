@@ -10,3 +10,7 @@ myvenv/
 
 # OpenCode 配置文件
 opencode.json
+
+# SSL 证书
+cert.pem
+key.pem

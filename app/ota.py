@@ -138,6 +138,15 @@ def build_frame(cmd, seq, payload):
         ]
     )
 
+CMD_AUDIO_DATA = 0x30
+CMD_AUDIO_STOP = 0x31
+
+
+def build_audio_frame(cmd, payload):
+    plen = len(payload)
+    head = struct.pack(">BHH", cmd, 0, plen)
+    return b"".join([MAGIC, head, payload])
+
 
 def parse_frame(buf):
     """

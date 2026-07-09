@@ -1,0 +1,130 @@
+{% extends "layout.html" %}
+{% block title %}语音通话{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6 text-center">
+            <h2 class="mb-4">🔊 语音通话</h2>
+
+            <button id="talkBtn" class="btn btn-danger rounded-circle"
+                    style="width: 200px; height: 200px; font-size: 1.5rem; user-select: none; touch-action: none;">
+                按住说话
+            </button>
+
+            <div id="status" class="mt-4 text-muted">松开按钮结束</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+    const socket = io();
+    const btn = document.getElementById("talkBtn");
+    const status = document.getElementById("status");
+
+    let audioCtx = null;
+    let processor = null;
+    let stream = null;
+    const SAMPLE_RATE = 16000;
+
+    function setStatus(text) {
+        status.textContent = text;
+    }
+
+    async function startAudio() {
+        if (audioCtx) stopAudio();
+
+        try {
+            const AC = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AC();
+            if (!audioCtx) throw new Error("无法创建 AudioContext");
+
+            stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            socket.emit("audio_start");
+            const source = audioCtx.createMediaStreamSource(stream);
+
+            const actualRate = audioCtx.sampleRate;
+            processor = audioCtx.createScriptProcessor(2048, 1, 1);
+            processor.onaudioprocess = function (event) {
+                let input = event.inputBuffer.getChannelData(0);
+                if (actualRate !== SAMPLE_RATE) {
+                    input = downsample(input, actualRate, SAMPLE_RATE);
+                }
+                const int16 = new Int16Array(input.length);
+                for (let i = 0; i < input.length; i++) {
+                    int16[i] = Math.max(-32768, Math.min(32767, input[i] * 32767));
+                }
+                socket.emit("audio_data", int16.buffer);
+            };
+
+            source.connect(processor);
+            processor.connect(audioCtx.destination);
+
+            setStatus("正在说话...");
+        } catch (e) {
+            setStatus("麦克风错误: " + e.message);
+            console.error(e);
+            stopAudio();
+        }
+    }
+
+    function stopAudio() {
+        if (processor) {
+            processor.disconnect();
+            processor = null;
+        }
+        if (audioCtx) {
+            audioCtx.close();
+            audioCtx = null;
+        }
+        if (stream) {
+            stream.getTracks().forEach(t => t.stop());
+            stream = null;
+        }
+        socket.emit("audio_stop");
+        setStatus("松开按钮结束");
+    }
+
+    function downsample(input, srcRate, dstRate) {
+        const ratio = srcRate / dstRate;
+        const outLen = Math.floor(input.length / ratio);
+        const out = new Float32Array(outLen);
+        for (let i = 0; i < outLen; i++) {
+            out[i] = input[Math.floor(i * ratio)];
+        }
+        return out;
+    }
+
+    btn.addEventListener("mousedown", function (e) {
+        e.preventDefault();
+        startAudio();
+    });
+    btn.addEventListener("mouseup", function (e) {
+        e.preventDefault();
+        stopAudio();
+    });
+    btn.addEventListener("mouseleave", function (e) {
+        if (processor) stopAudio();
+    });
+
+    btn.addEventListener("touchstart", function (e) {
+        e.preventDefault();
+        startAudio();
+    });
+    btn.addEventListener("touchend", function (e) {
+        e.preventDefault();
+        stopAudio();
+    });
+    btn.addEventListener("touchcancel", function (e) {
+        stopAudio();
+    });
+
+    socket.on("audio_error", function (data) {
+        setStatus("错误: " + data.message);
+    });
+})();
+</script>
+{% endblock %}

@@ -3,20 +3,24 @@ import gc
 import _thread
 from esp32sever.config import PING_INTERVAL, PONG_TIMEOUT
 from esp32sever.connection import NetworkManager
-from esp32sever.protocol import parse_binary_frame
+from esp32sever.protocol import parse_binary_frame, parse_audio_frame
 from esp32sever.ota import OTAHandler
 from esp32sever.hardware import Hardware
 from esp32sever.ir_handler import do_ir_learn, do_ir_send
+from esp32sever.audio import AudioPlayer
 
 
 hw = Hardware()
 net = NetworkManager()
 ota = OTAHandler(net)
+audio = AudioPlayer()
+audio_active = False
 
 
 def receiver_thread():
+    global audio_active
     recv_buf = b""
-    prev_ota = 0
+    prev_binary = False
 
     while True:
         try:
@@ -39,15 +43,30 @@ def receiver_thread():
                     cmd, seq, payload, consumed = result
                     ota.handle_frame(cmd, seq, payload)
                     recv_buf = recv_buf[consumed:]
-                prev_ota = ota.state
+
+            elif audio_active:
+                while len(recv_buf) >= 7:
+                    result = parse_audio_frame(recv_buf)
+                    if result == -2:
+                        break
+                    if result == -1:
+                        recv_buf = recv_buf[1:]
+                        continue
+                    cmd, seq, payload, consumed = result
+                    if cmd == 0x30:
+                        audio.write(payload)
+                    elif cmd == 0x31:
+                        audio.stop()
+                        audio_active = False
+                    recv_buf = recv_buf[consumed:]
 
             else:
-                if prev_ota > 0:
+                if prev_binary:
                     recv_buf = b""
                 while b"\n" in recv_buf:
                     idx = recv_buf.find(b"\n")
                     line = recv_buf[:idx].decode().strip()
-                    recv_buf = recv_buf[idx + 1:]
+                    recv_buf = recv_buf[idx + 1 :]
                     if not line:
                         continue
 
@@ -59,6 +78,10 @@ def receiver_thread():
 
                     elif line == "FLASH_BIN":
                         ota.do_flash()
+
+                    elif line == "AUDIO_START":
+                        audio.start()
+                        audio_active = True
 
                     elif line == "LEARN_IR":
                         do_ir_learn(net)
@@ -89,7 +112,7 @@ def receiver_thread():
                         r, g, b = rgb.split(",")
                         hw.set_color(r, g, b)
 
-                prev_ota = ota.state
+                prev_binary = ota.state > 0 or audio_active
 
         except OSError:
             pass
@@ -122,7 +145,7 @@ def main():
                 _thread.start_new_thread(receiver_thread, ())
                 continue
 
-            if ota.state == 0 and not ota.flash_active:
+            if ota.state == 0 and not ota.flash_active and not audio_active:
                 if was_paused:
                     net.last_pong = now
                 was_paused = False
@@ -138,7 +161,12 @@ def main():
             else:
                 was_paused = True
 
-            if net.send_enable and ota.state == 0 and not ota.flash_active:
+            if (
+                net.send_enable
+                and ota.state == 0
+                and not ota.flash_active
+                and not audio_active
+            ):
                 hw.send_data(net)
 
             gc.collect()

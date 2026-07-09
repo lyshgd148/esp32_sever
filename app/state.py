@@ -27,6 +27,10 @@ pending_ir_context = None  # {"device": "电视", "key": "电源"}
 ir_send_active = False
 pending_ir_send_context = None  # {"device": "电视", "key": "电源"}
 
+# 实时语音
+audio_active = False
+audio_sid = None
+
 _op_lock = threading.Lock()
 
 # infrared.json 路径与读写锁
@@ -38,7 +42,7 @@ def try_start_ota():
     """原子检查+置位: 返回 True 抢占成功, False 已有其他操作进行中"""
     global ota_active
     with _op_lock:
-        if ota_active or flash_active or ir_learn_active or ir_send_active:
+        if ota_active or flash_active or ir_learn_active or ir_send_active or audio_active:
             return False
         ota_active = True
         ota_queue = None
@@ -49,7 +53,7 @@ def try_start_flash():
     """原子检查+置位: 返回 True 抢占成功, False 已有其他操作进行中"""
     global flash_active
     with _op_lock:
-        if ota_active or flash_active or ir_learn_active or ir_send_active:
+        if ota_active or flash_active or ir_learn_active or ir_send_active or audio_active:
             return False
         flash_active = True
         return True
@@ -59,7 +63,7 @@ def try_start_ir_learn():
     """原子检查+置位: 返回 True 抢占成功, False 已有其他操作进行中"""
     global ir_learn_active
     with _op_lock:
-        if ota_active or flash_active or ir_learn_active or ir_send_active:
+        if ota_active or flash_active or ir_learn_active or ir_send_active or audio_active:
             return False
         ir_learn_active = True
         return True
@@ -69,7 +73,7 @@ def try_start_ir_send():
     """原子检查+置位: 返回 True 抢占成功, False 已有其他操作进行中"""
     global ir_send_active
     with _op_lock:
-        if ota_active or flash_active or ir_learn_active or ir_send_active:
+        if ota_active or flash_active or ir_learn_active or ir_send_active or audio_active:
             return False
         ir_send_active = True
         return True
@@ -104,6 +108,24 @@ def end_ir_send():
     with _op_lock:
         ir_send_active = False
         pending_ir_send_context = None
+
+
+def try_start_audio():
+    """原子检查+置位: 返回 True 抢占成功, False 已有其他操作进行中"""
+    global audio_active
+    with _op_lock:
+        if ota_active or flash_active or ir_learn_active or ir_send_active or audio_active:
+            return False
+        audio_active = True
+        return True
+
+
+def end_audio():
+    """结束实时语音"""
+    global audio_active, audio_sid
+    with _op_lock:
+        audio_active = False
+        audio_sid = None
 
 
 # ===== infrared.json 读写 =====

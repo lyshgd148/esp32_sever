@@ -2,6 +2,7 @@ import time
 from .extensions import socketio
 from . import state as st
 from .state import safe_send
+from .ota import build_audio_frame, CMD_AUDIO_DATA, CMD_AUDIO_STOP
 
 _index_sids = {}
 
@@ -25,6 +26,8 @@ def on_connect(auth=None):
 @socketio.on("disconnect")
 def on_disconnect():
     from flask import request
+    if request.sid == st.audio_sid:
+        st.end_audio()
     if request.sid in _index_sids:
         del _index_sids[request.sid]
         st.web_count -= 1
@@ -108,3 +111,28 @@ def on_ir_send(data):
 
     st.pending_ir_send_context = {"device": device, "key": key}
     st.safe_send(("SEND_IR=" + ",".join(str(v) for v in raw) + "\n").encode())
+
+
+@socketio.on("audio_start")
+def on_audio_start():
+    from flask import request
+    if not st.try_start_audio():
+        socketio.emit("audio_error", {"message": "另一操作正在进行中, 请稍候。"})
+        return
+    st.audio_sid = request.sid
+    if st.esp32_conn:
+        st.safe_send(b"AUDIO_START\n")
+
+
+@socketio.on("audio_stop")
+def on_audio_stop():
+    if st.esp32_conn:
+        st.safe_send(build_audio_frame(CMD_AUDIO_STOP, b""))
+    st.end_audio()
+
+
+@socketio.on("audio_data")
+def on_audio_data(data):
+    if not st.audio_active or not st.esp32_conn:
+        return
+    st.safe_send(build_audio_frame(CMD_AUDIO_DATA, data))
