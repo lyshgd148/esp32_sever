@@ -105,6 +105,17 @@ def tcp_server():
         conn, addr = s.accept()
         print("ESP32 connected:", addr)
 
+        if st.esp32_conn:
+            try:
+                st.esp32_conn.close()
+            except:
+                pass
+        st.end_flash()
+        st.end_ota()
+        st.end_ir_learn()
+        st.end_ir_send()
+        st.end_audio()
+
         st.esp32_conn = conn
 
         threading.Thread(target=tcp_recv_loop, args=(conn,), daemon=True).start()

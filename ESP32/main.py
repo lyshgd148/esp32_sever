@@ -139,9 +139,9 @@ def receiver_thread():
 
 def main():
     global audio_active
-    hw.init_led()
     net.wifi_connect()
     net.tcp_connect()
+    hw.init_led()
 
     _thread.start_new_thread(receiver_thread, ())
 
