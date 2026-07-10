@@ -6,6 +6,8 @@
 .\myvenv\Scripts\Activate.ps1   # 虚拟环境在 .\myvenv（gitignored）
 python run.py                    # 默认 0.0.0.0:5000
 python run.py --port 8080        # 自定义端口
+python run.py --ipv6             # IPv6 通配 :: (可与 --port/--ssl 组合)
+python run.py --ipv6 <地址>      # 指定 IPv6 地址
 ```
 
 依赖安装：`pip install -r requirements.txt`（flask>=3.0, flask-socketio>=5.0, pymysql, DBUtils）
@@ -24,6 +26,7 @@ python run.py --port 8080        # 自定义端口
 - **加锁规范**：存在嵌套加锁可能时必须使用 `threading.RLock()`，避免同一线程死锁。
 - **TCP 协议复用**：同一 TCP 连接复用文本协议（`\n` 分隔）和 OTA 二进制帧（`0xAA 0x55` 魔术头），由 `st.ota_active` 标志切换，不要在 TCP 连接上新增第三种通信模式。
 - **五者互斥**：OTA/Flash/红外学习/红外发射/语音五者互斥，通过 `try_start_*()` / `end_*()` 原子检查。`_run_ota()` 使用 `try/finally` 确保失败路径释放锁；`on_disconnect` 补充 OTA 锁释放。
+- **ESP32 重连清理**：`app/tcp.py:tcp_server()` 中新 ESP32 连接时会关闭旧连接并强制重置全部 5 把互斥锁，解决 ESP32 硬断电导致锁持久占用的 bug。
 - **音频协议**：同一 TCP 连接复用文本协议（`AUDIO_START\n`）和音频二进制帧（`0xAA 0x55` 魔术头，CMD `0x30`=AUDIO_DATA, `0x31`=AUDIO_STOP，无 CRC）。音频帧不在 TCP 上新增第三种模式，而是复用二进制帧格式。
 - **ESP32 引脚冲突注意**：I2S 音频使用 Pin 4(SCK)/5(WS)/6(SD)，STM32 烧录 NRST 已从 Pin 4 移至 Pin 15，避免冲突导致烧录后音频无声。
 - **ESP32 I2S**：`audio.py` 采用 init-once 模式，`start()` 首次初始化 I2S，`stop()` 不 deinit 只设标志位，避免 MicroPython I2S 重复 init/deinit 的 bug。

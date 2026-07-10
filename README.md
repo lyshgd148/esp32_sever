@@ -126,9 +126,11 @@ pip install -r requirements.txt
 ### 运行
 
 ```powershell
-python run.py                      # 默认 0.0.0.0:5000
-python run.py --port 8080          # 自定义 HTTP 端口
-python run.py --port 5000 --ssl    # 启用 HTTPS (需 cert.pem/key.pem)
+python run.py                                 # 默认 0.0.0.0:5000
+python run.py --port 8080                     # 自定义 HTTP 端口
+python run.py --port 5000 --ssl               # 启用 HTTPS (需 cert.pem/key.pem)
+python run.py --ipv6                          # IPv6 通配 ::
+python run.py --ipv6 2409:8a20::1 --ssl       # 指定 IPv6 地址 + HTTPS
 ```
 
 ### ESP32 部署
@@ -177,6 +179,8 @@ ESP32/
 ## 协议独占
 
 OTA、Flash 烧录、红外学习、红外发射、语音 **五者互斥**，通过 `try_start_*()` / `end_*()` 原子检查，同时只能进行一项。
+
+ESP32 掉线重连时，`tcp_server()` 会关闭旧连接并强制重置全部五把互斥锁，防止硬断电导致锁持久占用。
 
 ## 认证
 
